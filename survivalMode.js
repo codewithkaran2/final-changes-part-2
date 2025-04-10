@@ -1,5 +1,4 @@
-//  survivalMode.js
-
+// survivalMode.js
 // ============================
 // CHAOS KEYBOARD BATTLE - SURVIVAL MODE
 // ============================
@@ -9,15 +8,10 @@ let paused = false;
 let gameOverState = false;
 let startTime = 0;
 let enemySpawnInterval, powerUpSpawnInterval;
-
 const enemyBullets = [];
 const enemies = [];
 const powerUps = [];
 
-let playerName = localStorage.getItem("survivalPlayerName") || "Player";
-let playerColor = localStorage.getItem("survivalPlayerColor") || "blue";
-
-// Player setup
 const player = {
   x: 0,
   y: 0,
@@ -31,9 +25,9 @@ const player = {
   shieldActive: false,
   dashCooldown: 0,
   lastShot: 0,
+  color: "blue",
 };
 
-// Controls
 const keys = {};
 
 function attachEventListeners() {
@@ -51,8 +45,8 @@ function spawnEnemy() {
     y: -50,
     width: 50,
     height: 50,
-    speed: Math.random() * 2 + 1 + getWave() * 0.2,
-    health: 30 + getWave() * 5,
+    speed: Math.random() * 2 + 1 + getWave() * 0.3,
+    health: 30 + getWave() * 10,
     lastShot: Date.now(),
   };
   enemies.push(enemy);
@@ -68,18 +62,21 @@ function spawnPowerUp() {
     height: 30,
     type: type,
     spawnTime: Date.now(),
+    color:
+      type === "health" ? "lime" :
+      type === "shield" ? "cyan" :
+      type === "speed" ? "magenta" : "yellow",
   };
   powerUps.push(powerUp);
 }
 
 function shootBullet() {
-  player.bullets.push({
-    x: player.x + player.width / 2 - 5,
-    y: player.y,
-    width: 10,
-    height: 10,
-    speed: 6,
-  });
+  player.bullets.push(
+    { x: player.x + player.width / 2 - 5, y: player.y, width: 10, height: 10, speedX: 0, speedY: -6 },
+    { x: player.x + player.width / 2 - 5, y: player.y, width: 10, height: 10, speedX: 6, speedY: 0 },
+    { x: player.x + player.width / 2 - 5, y: player.y, width: 10, height: 10, speedX: -6, speedY: 0 },
+    { x: player.x + player.width / 2 - 5, y: player.y, width: 10, height: 10, speedX: 0, speedY: 6 }
+  );
 }
 
 function dash() {
@@ -115,40 +112,37 @@ function update() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const wave = getWave();
 
-  // Movement
   if (keys["a"] && player.x > 0) player.x -= player.speed;
   if (keys["d"] && player.x + player.width < canvas.width) player.x += player.speed;
   if (keys["w"] && player.y > 0) player.y -= player.speed;
   if (keys["s"] && player.y + player.height < canvas.height) player.y += player.speed;
 
-  // Shooting
   if (keys[" "] && Date.now() - player.lastShot > 300) {
     shootBullet();
     player.lastShot = Date.now();
   }
 
-  // Shield
   player.shieldActive = !!keys["q"];
-
-  // Dash
   if (keys["e"]) dash();
-  if (player.dashCooldown > 0) {
-    player.dashCooldown -= 16;
-  }
+  if (player.dashCooldown > 0) player.dashCooldown -= 16;
 
-  // Update bullets
   player.bullets.forEach((bullet, index) => {
-    bullet.y -= bullet.speed;
-    if (bullet.y < 0) player.bullets.splice(index, 1);
+    bullet.x += bullet.speedX;
+    bullet.y += bullet.speedY;
+    if (
+      bullet.x < 0 || bullet.x > canvas.width ||
+      bullet.y < 0 || bullet.y > canvas.height
+    ) {
+      player.bullets.splice(index, 1);
+    }
   });
 
-  // Enemies
   enemies.forEach((enemy, eIndex) => {
-    enemy.y += enemy.speed;
-    if (enemy.y > canvas.height) {
-      enemies.splice(eIndex, 1);
-      return;
-    }
+    const dx = player.x - enemy.x;
+    const dy = player.y - enemy.y;
+    const angle = Math.atan2(dy, dx);
+    enemy.x += Math.cos(angle) * enemy.speed;
+    enemy.y += Math.sin(angle) * enemy.speed;
 
     if (Date.now() - enemy.lastShot > 2000) {
       enemy.lastShot = Date.now();
@@ -162,7 +156,11 @@ function update() {
     }
 
     if (isColliding(player, enemy)) {
-      if (!player.shieldActive) player.health -= 10;
+      if (!player.shieldActive) {
+        player.health -= 10;
+        document.body.style.backgroundColor = "red";
+        setTimeout(() => (document.body.style.backgroundColor = ""), 100);
+      }
       enemies.splice(eIndex, 1);
       return;
     }
@@ -174,12 +172,13 @@ function update() {
         if (enemy.health <= 0) {
           player.score += 10;
           enemies.splice(eIndex, 1);
+          document.body.style.backgroundColor = "lightgreen";
+          setTimeout(() => (document.body.style.backgroundColor = ""), 100);
         }
       }
     });
   });
 
-  // Enemy Bullets
   enemyBullets.forEach((bullet, index) => {
     bullet.y += bullet.speed;
     if (bullet.y > canvas.height) {
@@ -187,72 +186,65 @@ function update() {
       return;
     }
     if (isColliding(bullet, player)) {
-      if (!player.shieldActive) player.health -= 10;
+      if (!player.shieldActive) {
+        player.health -= 10;
+        document.body.style.backgroundColor = "red";
+        setTimeout(() => (document.body.style.backgroundColor = ""), 100);
+      }
       enemyBullets.splice(index, 1);
     }
   });
 
-  // Power-ups
   powerUps.forEach((powerUp, index) => {
     if (isColliding(player, powerUp)) {
       if (powerUp.type === "health") player.health = Math.min(100, player.health + 20);
       if (powerUp.type === "shield") player.shieldActive = true;
       if (powerUp.type === "speed") player.speed += 2;
       if (powerUp.type === "bullet") {
-        player.bullets.forEach((b) => (b.speed += 2));
+        player.bullets.forEach((b) => (b.speedX *= 1.5, b.speedY *= 1.5));
       }
+      powerUps.splice(index, 1);
+    } else if (Date.now() - powerUp.spawnTime > 8000) {
       powerUps.splice(index, 1);
     }
   });
 
-  // DRAW
-
-  // Player
-  ctx.fillStyle = playerColor;
+  ctx.fillStyle = player.color;
   ctx.fillRect(player.x, player.y, player.width, player.height);
-
-  // Player Name
-  ctx.fillStyle = "white";
-  ctx.font = "16px Arial";
-  ctx.fillText(playerName, player.x + player.width / 2 - ctx.measureText(playerName).width / 2, player.y - 10);
-
-  // Shield outline
   if (player.shieldActive) {
     ctx.strokeStyle = "cyan";
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 5;
     ctx.beginPath();
-    ctx.arc(player.x + player.width / 2, player.y + player.height / 2, player.width / 1.5, 0, Math.PI * 2);
+    ctx.arc(player.x + player.width / 2, player.y + player.height / 2, player.width, 0, Math.PI * 2);
     ctx.stroke();
   }
 
-  // Bullets
   ctx.fillStyle = "red";
   player.bullets.forEach((bullet) => {
     ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
   });
 
-  // Enemies
   ctx.fillStyle = "green";
   enemies.forEach((enemy) => {
     ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
   });
 
-  // Enemy bullets
   ctx.fillStyle = "orange";
   enemyBullets.forEach((bullet) => {
     ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
   });
 
-  // Power-ups
-  ctx.fillStyle = "yellow";
   powerUps.forEach((powerUp) => {
+    ctx.fillStyle = powerUp.color;
     ctx.fillRect(powerUp.x, powerUp.y, powerUp.width, powerUp.height);
+    ctx.fillStyle = "black";
+    ctx.font = "12px Arial";
+    ctx.fillText(powerUp.type.toUpperCase(), powerUp.x + 2, powerUp.y + 20);
   });
 
-  // UI
   ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
-  ctx.fillText(`Health: ${player.health}`, 10, 30);
+  ctx.font = "18px Arial";
+  ctx.fillText(`Health: ${player.health}%`, 10, 30);
   ctx.fillText(`Score: ${player.score}`, 10, 60);
   ctx.fillText(`Wave: ${wave}`, 10, 90);
   const timerSeconds = Math.floor((Date.now() - startTime) / 1000);
@@ -268,20 +260,24 @@ function update() {
 
 function gameOver() {
   gameOverState = true;
+  localStorage.setItem("survivalHighScore", Math.max(player.score, getHighScore()));
   ctx.fillStyle = "red";
   ctx.font = "40px Arial";
   ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+  ctx.font = "20px Arial";
+  ctx.fillText(`Score: ${player.score}`, canvas.width / 2 - 40, canvas.height / 2 + 40);
+  ctx.fillText(`High Score: ${getHighScore()}`, canvas.width / 2 - 60, canvas.height / 2 + 70);
   const gameOverScreen = document.getElementById("gameOverScreen");
-  if (gameOverScreen) {
-    gameOverScreen.classList.remove("hidden");
-  }
+  if (gameOverScreen) gameOverScreen.classList.remove("hidden");
+}
+
+function getHighScore() {
+  return parseInt(localStorage.getItem("survivalHighScore")) || 0;
 }
 
 function survivalStartGame() {
-  console.log("Survival mode starting...");
   canvas = document.getElementById("gameCanvas");
   ctx = canvas.getContext("2d");
-
   attachEventListeners();
 
   player.x = canvas.width / 2 - 25;
@@ -294,13 +290,18 @@ function survivalStartGame() {
   player.lastShot = 0;
   player.dashCooldown = 0;
 
+  const colorPicker = document.getElementById("playerColor");
+  if (colorPicker) {
+    player.color = colorPicker.value || "blue";
+  }
+
   enemies.length = 0;
   enemyBullets.length = 0;
   powerUps.length = 0;
   gameOverState = false;
   paused = false;
-
   startTime = Date.now();
+
   enemySpawnInterval = setInterval(spawnEnemy, 2000);
   powerUpSpawnInterval = setInterval(spawnPowerUp, 10000);
 
@@ -325,9 +326,7 @@ function restartGame() {
 
 function playAgain() {
   const gameOverScreen = document.getElementById("gameOverScreen");
-  if (gameOverScreen) {
-    gameOverScreen.classList.add("hidden");
-  }
+  if (gameOverScreen) gameOverScreen.classList.add("hidden");
   survivalStartGame();
 }
 
